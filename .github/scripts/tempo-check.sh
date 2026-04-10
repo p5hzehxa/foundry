@@ -728,170 +728,170 @@ else
   echo "skipped (custom fee token set)"
 fi
 
-# TODO(upstream): re-enable anvil local/fork tests once T3 hardfork is supported by anvil
-# Currently fails with "Unknown hardfork: t3"
-# echo -e "\n=== ANVIL LOCAL TESTS ==="
+echo -e "\n=== ANVIL LOCAL TESTS ==="
 
-# ANVIL_PORT=8546
-# echo "Starting local anvil..."
+ANVIL_PORT=8546
+echo "Starting local anvil..."
 # Pass hardfork to anvil (lowercase for CLI compatibility)
-# ANVIL_HARDFORK=$(echo "$HARDFORK" | tr '[:upper:]' '[:lower:]')
-# anvil --tempo --hardfork "$ANVIL_HARDFORK" --port $ANVIL_PORT &
-# ANVIL_PID=$!
+ANVIL_HARDFORK=$(echo "$HARDFORK" | tr '[:upper:]' '[:lower:]')
+anvil --tempo --hardfork "$ANVIL_HARDFORK" --port $ANVIL_PORT &
+ANVIL_PID=$!
 
 # Ensure anvil is stopped on script exit
-# trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
+trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
 
 # Wait for anvil to be ready (max 10 seconds)
-# for i in {1..10}; do
-#   if cast client --rpc-url "http://127.0.0.1:$ANVIL_PORT" 2>/dev/null; then
-#     echo "Anvil fork started successfully"
-#     break
-#   fi
-#   if [[ $i -eq 10 ]]; then
-#     echo "ERROR: Anvil fork failed to start"
-#     exit 1
-#   fi
-#   sleep 1
-# done
+for i in {1..10}; do
+  if cast client --rpc-url "http://127.0.0.1:$ANVIL_PORT" 2>/dev/null; then
+    echo "Anvil fork started successfully"
+    break
+  fi
+  if [[ $i -eq 10 ]]; then
+    echo "ERROR: Anvil fork failed to start"
+    exit 1
+  fi
+  sleep 1
+done
 
-# ALICE_PK="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+ALICE_PK="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
-# echo -e "\n=== ANVIL LOCAL: CHECK CLIENT VERSION ==="
-# cast client --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL LOCAL: CHECK CLIENT VERSION ==="
+cast client --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL LOCAL: CHECK CHAIN ID ==="
-# cast chain-id --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL LOCAL: CHECK CHAIN ID ==="
+cast chain-id --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL LOCAL: FORGE TEST ==="
-# TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL LOCAL: FORGE TEST ==="
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --tempo --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL LOCAL: FORGE SCRIPT SIMULATE ==="
-# TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"} script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK"
+echo -e "\n=== ANVIL LOCAL: FORGE SCRIPT SIMULATE ==="
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK"
 
-# echo -e "\n=== ANVIL LOCAL: FORGE SCRIPT BROADCAST ==="
-# TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"} script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK" --broadcast
+echo -e "\n=== ANVIL LOCAL: FORGE SCRIPT BROADCAST ==="
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK" --broadcast
 
-# echo -e "\n=== ANVIL LOCAL: CAST SEND ==="
-# cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK"
+echo -e "\n=== ANVIL LOCAL: CAST SEND ==="
+cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK"
 
-# echo -e "\n=== ANVIL LOCAL: ERC20 TRANSFER ==="
-# cast erc20 transfer --tempo.fee-token "$FEE_TOKEN" 0x20c0000000000000000000000000000000000000 0x4ef5DFf69C1514f4Dbf85aA4F9D95F804F64275F 123456 --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK"
+echo -e "\n=== ANVIL LOCAL: ERC20 TRANSFER ==="
+cast erc20 transfer --tempo.fee-token "$FEE_TOKEN" 0x20c0000000000000000000000000000000000000 0x4ef5DFf69C1514f4Dbf85aA4F9D95F804F64275F 123456 --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK"
 
-# echo -e "\n=== ANVIL LOCAL: CAST SEND WITH NONCE-KEY (2D Nonce) ==="
-# cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK" --nonce 0 --tempo.nonce-key 100
+echo -e "\n=== ANVIL LOCAL: CAST SEND WITH NONCE-KEY (2D Nonce) ==="
+cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK" --nonce 0 --tempo.nonce-key 100
 
+# TODO(upstream): re-enable after https://github.com/foundry-rs/foundry/pull/14259
 # echo -e "\n=== ANVIL LOCAL: CAST SEND WITH EXPIRING NONCE ==="
 # cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK" --tempo.expiring-nonce --tempo.valid-before "$(($(date +%s) + 25))"
 
-# echo -e "\n=== ANVIL LOCAL: BATCH SEND ==="
-# cast batch-send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT \
-#   --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
-#   --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
-#   --private-key "$ALICE_PK"
+echo -e "\n=== ANVIL LOCAL: BATCH SEND ==="
+cast batch-send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT \
+  --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
+  --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
+  --private-key "$ALICE_PK"
 
 # Stop anvil
-# kill "$ANVIL_PID" 2>/dev/null || true
-# trap - EXIT
+kill "$ANVIL_PID" 2>/dev/null || true
+trap - EXIT
 
-# echo -e "\n=== ANVIL LOCAL TESTS COMPLETE ==="
+echo -e "\n=== ANVIL LOCAL TESTS COMPLETE ==="
 
-# echo -e "\n=== ANVIL FORK TESTS ==="
+echo -e "\n=== ANVIL FORK TESTS ==="
 # Use a fresh wallet for fork tests to avoid fee token exhaustion from prior devnet tests
-# echo -e "\n=== ANVIL FORK: CREATE AND FUND FRESH WALLET ==="
-# fork_wallet_json="$(cast wallet new --json)"
-# FORK_ADDR="$(jq -r '.[0].address' <<<"$fork_wallet_json")"
-# FORK_PK="$(jq -r '.[0].private_key' <<<"$fork_wallet_json")"
-# printf "Fork test address: %s\n" "$FORK_ADDR"
-# fund_and_wait "$FORK_ADDR"
+echo -e "\n=== ANVIL FORK: CREATE AND FUND FRESH WALLET ==="
+fork_wallet_json="$(cast wallet new --json)"
+FORK_ADDR="$(jq -r '.[0].address' <<<"$fork_wallet_json")"
+FORK_PK="$(jq -r '.[0].private_key' <<<"$fork_wallet_json")"
+printf "Fork test address: %s\n" "$FORK_ADDR"
+fund_and_wait "$FORK_ADDR"
 
 # Set the fee token on devnet before forking so the fork snapshot includes it
-# cast send --rpc-url "$ETH_RPC_URL" 0xfeec000000000000000000000000000000000000 \
-#   'setUserToken(address)' "$FEE_TOKEN" --private-key "$FORK_PK"
+cast send --rpc-url "$ETH_RPC_URL" 0xfeec000000000000000000000000000000000000 \
+  'setUserToken(address)' "$FEE_TOKEN" --private-key "$FORK_PK"
 
-# ANVIL_PORT=8547
-# echo "Starting forked anvil..."
+ANVIL_PORT=8547
+echo "Starting forked anvil..."
 # Pass hardfork to anvil (lowercase for CLI compatibility)
-# ANVIL_HARDFORK=$(echo "$HARDFORK" | tr '[:upper:]' '[:lower:]')
-# anvil --tempo --hardfork "$ANVIL_HARDFORK" --fork-url "$ETH_RPC_URL" --port $ANVIL_PORT --retries 10 --timeout 60000 &
-# ANVIL_PID=$!
+ANVIL_HARDFORK=$(echo "$HARDFORK" | tr '[:upper:]' '[:lower:]')
+anvil --tempo --hardfork "$ANVIL_HARDFORK" --fork-url "$ETH_RPC_URL" --port $ANVIL_PORT --retries 10 --timeout 60000 &
+ANVIL_PID=$!
 
-# # Ensure anvil is stopped on script exit
-# trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
+# Ensure anvil is stopped on script exit
+trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
 
-# # Wait for anvil to be ready (max 10 seconds)
-# for i in {1..10}; do
-#   if cast client --rpc-url "http://127.0.0.1:$ANVIL_PORT" 2>/dev/null; then
-#     echo "Anvil fork started successfully"
-#     break
-#   fi
-#   if [[ $i -eq 10 ]]; then
-#     echo "ERROR: Anvil fork failed to start"
-#     exit 1
-#   fi
-#   sleep 1
-# done
+# Wait for anvil to be ready (max 10 seconds)
+for i in {1..10}; do
+  if cast client --rpc-url "http://127.0.0.1:$ANVIL_PORT" 2>/dev/null; then
+    echo "Anvil fork started successfully"
+    break
+  fi
+  if [[ $i -eq 10 ]]; then
+    echo "ERROR: Anvil fork failed to start"
+    exit 1
+  fi
+  sleep 1
+done
 
-# echo -e "\n=== ANVIL FORK: CHECK CLIENT VERSION ==="
-# cast client --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL FORK: CHECK CLIENT VERSION ==="
+cast client --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL FORK: CHECK CHAIN ID ==="
-# cast chain-id --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL FORK: CHECK CHAIN ID ==="
+cast chain-id --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL FORK: CHECK BLOCK NUMBER ==="
-# cast block-number --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL FORK: CHECK BLOCK NUMBER ==="
+cast block-number --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL FORK: FORGE TEST ==="
-# TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --rpc-url http://127.0.0.1:$ANVIL_PORT
+echo -e "\n=== ANVIL FORK: FORGE TEST ==="
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --tempo --rpc-url http://127.0.0.1:$ANVIL_PORT
 
-# echo -e "\n=== ANVIL FORK: FORGE SCRIPT SIMULATE ==="
-# TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK"
+echo -e "\n=== ANVIL FORK: FORGE SCRIPT SIMULATE ==="
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK"
 
-# echo -e "\n=== ANVIL FORK: FORGE SCRIPT BROADCAST ==="
-# TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK" --broadcast
+echo -e "\n=== ANVIL FORK: FORGE SCRIPT BROADCAST ==="
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK" --broadcast
 
-# echo -e "\n=== ANVIL FORK: CAST SEND ==="
-# cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK"
+echo -e "\n=== ANVIL FORK: CAST SEND ==="
+cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK"
 
-# echo -e "\n=== ANVIL FORK: ERC20 TRANSFER ==="
-# cast erc20 transfer --tempo.fee-token "$FEE_TOKEN" 0x20c0000000000000000000000000000000000000 0x4ef5DFf69C1514f4Dbf85aA4F9D95F804F64275F 123456 --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK"
+echo -e "\n=== ANVIL FORK: ERC20 TRANSFER ==="
+cast erc20 transfer --tempo.fee-token "$FEE_TOKEN" 0x20c0000000000000000000000000000000000000 0x4ef5DFf69C1514f4Dbf85aA4F9D95F804F64275F 123456 --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK"
 
-# echo -e "\n=== ANVIL FORK: CAST SEND WITH NONCE-KEY (2D Nonce) ==="
-# cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK" --nonce 0 --tempo.nonce-key 100
+echo -e "\n=== ANVIL FORK: CAST SEND WITH NONCE-KEY (2D Nonce) ==="
+cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK" --nonce 0 --tempo.nonce-key 100
 
+# TODO(upstream): re-enable after https://github.com/foundry-rs/foundry/pull/14259
 # echo -e "\n=== ANVIL FORK: CAST SEND WITH EXPIRING NONCE ==="
 # cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK" --tempo.expiring-nonce --tempo.valid-before "$(($(date +%s) + 25))"
 
-# echo -e "\n=== ANVIL FORK: BATCH SEND ==="
-# cast batch-send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT \
-#   --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
-#   --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
-#   --private-key "$FORK_PK"
+echo -e "\n=== ANVIL FORK: BATCH SEND ==="
+cast batch-send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT \
+  --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
+  --call "0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D::increment()" \
+  --private-key "$FORK_PK"
 
 # Stop anvil
-# kill "$ANVIL_PID" 2>/dev/null || true
-# trap - EXIT
+kill "$ANVIL_PID" 2>/dev/null || true
+trap - EXIT
 
-# echo -e "\n=== ANVIL FORK TESTS COMPLETE ==="
+echo -e "\n=== ANVIL FORK TESTS COMPLETE ==="
 
-# echo -e "\n=== CHISEL FORK TESTS ==="
+echo -e "\n=== CHISEL FORK TESTS ==="
 # Test chisel forking the Tempo network - precompiles should be accessible from fork
 
 # Helper to check address has code via chisel fork
-# check_has_code() {
-#   local name="$1" addr="$2"
-#   local result
-#   result=$(chisel --fork-url "$ETH_RPC_URL" eval "address($addr).code.length > 0" 2>&1 | sed -n 's/.*Value: \(true\|false\).*/\1/p' || echo "")
-#   if [[ "$result" != "true" ]]; then
-#     echo "ERROR: $name ($addr) should have code when forking Tempo"
-#     exit 1
-#   fi
-#   echo "OK: $name has code"
-# }
+check_has_code() {
+  local name="$1" addr="$2"
+  local result
+  result=$(chisel --fork-url "$ETH_RPC_URL" eval "address($addr).code.length > 0" 2>&1 | sed -n 's/.*Value: \(true\|false\).*/\1/p' || echo "")
+  if [[ "$result" != "true" ]]; then
+    echo "ERROR: $name ($addr) should have code when forking Tempo"
+    exit 1
+  fi
+  echo "OK: $name has code"
+}
 
-# check_has_code "PathUSD" "0x20C0000000000000000000000000000000000000"
-# check_has_code "AlphaUSD" "0x20C0000000000000000000000000000000000001"
-# check_has_code "Nonce" "0x4e4F4E4345000000000000000000000000000000"
-# check_has_code "AccountKeychain" "0xaAAAaaAA00000000000000000000000000000000"
+check_has_code "PathUSD" "0x20C0000000000000000000000000000000000000"
+check_has_code "AlphaUSD" "0x20C0000000000000000000000000000000000001"
+check_has_code "Nonce" "0x4e4F4E4345000000000000000000000000000000"
+check_has_code "AccountKeychain" "0xaAAAaaAA00000000000000000000000000000000"
 
-# echo -e "\n=== CHISEL FORK TESTS COMPLETE ==="
+echo -e "\n=== CHISEL FORK TESTS COMPLETE ==="
