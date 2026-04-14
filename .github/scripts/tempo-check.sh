@@ -297,7 +297,7 @@ kc_sel_json="$(cast wallet new --json)"
 KC_SEL_PK="$(jq -r '.[0].private_key' <<<"$kc_sel_json")"
 KC_SEL_ADDR="$(jq -r '.[0].address' <<<"$kc_sel_json")"
 cast keychain auth "$KC_SEL_ADDR" secp256k1 1893456000 \
-  --scope "${FEE_TOKEN}:transfer,approve" \
+  --scope "$FEE_TOKEN:transfer,approve" \
   --rpc-url "$ETH_RPC_URL" --private-key "$PK" ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"}
 echo "OK: authorized key with selector-scoped restrictions"
 
@@ -406,7 +406,7 @@ KC_RECIP_ADDR="$(jq -r '.[0].address' <<<"$kc_recip_json")"
 # Only allow transfer to a specific recipient
 ALLOWED_RECIPIENT="0x4ef5DFf69C1514f4Dbf85aA4F9D95F804F64275F"
 cast keychain auth "$KC_RECIP_ADDR" secp256k1 1893456000 \
-  --scope "${FEE_TOKEN}:transfer@$ALLOWED_RECIPIENT" \
+  --scope "$FEE_TOKEN:transfer@$ALLOWED_RECIPIENT" \
   --rpc-url "$ETH_RPC_URL" --private-key "$PK" ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"}
 echo "OK: authorized key with recipient-restricted transfer"
 
@@ -538,7 +538,6 @@ cast batch-send ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"} --rpc-url "$ETH_RPC_UR
 
 NUMBER=$(cast call --rpc-url "$ETH_RPC_URL" "$REQUIRE_COUNTER" "number()(uint256)")
 echo "Counter number after batch: $NUMBER (expected: 101)"
-
 
 echo -e "\n=== FORGE SCRIPT --BATCH (NATIVE BATCHING) ==="
 # Create a script that calls multiple contracts and batch them into a single tx
@@ -692,19 +691,19 @@ if [[ ${#FEE_TOKEN_ARG[@]} -eq 0 ]]; then
   cast erc20 approve 0x20c0000000000000000000000000000000000000 0xdec0000000000000000000000000000000000000 10000000000 --rpc-url "$ETH_RPC_URL" --private-key "$PK"
 
   echo -e "\n=== ADD LIQUIDITY: PLACE BID ==="
-  cast send 0xdec0000000000000000000000000000000000000 "place(address,uint128,bool,int16)" 0x20c0000000000000000000000000000000000002 100000000 true 10 --private-key "$PK" --rpc-url "$ETH_RPC_URL"
+  cast send 0xdec0000000000000000000000000000000000000 "place(address,uint128,bool,int16)" 0x20c0000000000000000000000000000000000002 100000000 true 10 --private-key "$PK" -r "$ETH_RPC_URL"
 
   echo -e "\n=== ADD LIQUIDITY: PLACE ASK ==="
-  cast send 0xdec0000000000000000000000000000000000000 "place(address,uint128,bool,int16)" 0x20c0000000000000000000000000000000000002 100000000 false 10 --private-key "$PK" --rpc-url "$ETH_RPC_URL"
+  cast send 0xdec0000000000000000000000000000000000000 "place(address,uint128,bool,int16)" 0x20c0000000000000000000000000000000000002 100000000 false 10 --private-key "$PK" -r "$ETH_RPC_URL"
 
   echo -e "\n=== ADD LIQUIDITY: PLACE FLIP ==="
-  cast send 0xdec0000000000000000000000000000000000000 "placeFlip(address,uint128,bool,int16,int16)" 0x20c0000000000000000000000000000000000002 100000000 true -10 10 --private-key "$PK" --rpc-url "$ETH_RPC_URL"
+  cast send 0xdec0000000000000000000000000000000000000 "placeFlip(address,uint128,bool,int16,int16)" 0x20c0000000000000000000000000000000000002 100000000 true -10 10 --private-key "$PK" -r "$ETH_RPC_URL"
 
   echo -e "\n=== ADD LIQUIDITY: SWAP EXACT AMOUNT IN ==="
-  cast send 0xdec0000000000000000000000000000000000000 "swapExactAmountIn(address,address,uint128,uint128)" 0x20c0000000000000000000000000000000000000 0x20c0000000000000000000000000000000000002 100000000 9000000 --private-key "$PK" --rpc-url "$ETH_RPC_URL"
+  cast send 0xdec0000000000000000000000000000000000000 "swapExactAmountIn(address,address,uint128,uint128)" 0x20c0000000000000000000000000000000000000 0x20c0000000000000000000000000000000000002 100000000 9000000 --private-key "$PK" -r "$ETH_RPC_URL"
 
   echo -e "\n=== ADD LIQUIDITY: SWAP EXACT AMOUNT OUT ==="
-  cast send 0xdec0000000000000000000000000000000000000 "swapExactAmountOut(address,address,uint128,uint128)" 0x20c0000000000000000000000000000000000002 0x20c0000000000000000000000000000000000000 9000000 100000000 --private-key "$PK" --rpc-url "$ETH_RPC_URL"
+  cast send 0xdec0000000000000000000000000000000000000 "swapExactAmountOut(address,address,uint128,uint128)" 0x20c0000000000000000000000000000000000002 0x20c0000000000000000000000000000000000000 9000000 100000000 --private-key "$PK" -r "$ETH_RPC_URL"
 else
   echo -e "\n=== CHANGE USER DEFAULT FEE TOKEN ==="
   echo "skipped (custom fee token set)"
@@ -762,13 +761,13 @@ echo -e "\n=== ANVIL LOCAL: CHECK CHAIN ID ==="
 cast chain-id --rpc-url http://127.0.0.1:$ANVIL_PORT
 
 echo -e "\n=== ANVIL LOCAL: FORGE TEST ==="
-TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --tempo --rpc-url http://127.0.0.1:$ANVIL_PORT
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --rpc-url http://127.0.0.1:$ANVIL_PORT
 
 echo -e "\n=== ANVIL LOCAL: FORGE SCRIPT SIMULATE ==="
-TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK"
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"} script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK"
 
 echo -e "\n=== ANVIL LOCAL: FORGE SCRIPT BROADCAST ==="
-TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK" --broadcast
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"} script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$ALICE_PK" --broadcast
 
 echo -e "\n=== ANVIL LOCAL: CAST SEND ==="
 cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK"
@@ -779,9 +778,8 @@ cast erc20 transfer --tempo.fee-token "$FEE_TOKEN" 0x20c000000000000000000000000
 echo -e "\n=== ANVIL LOCAL: CAST SEND WITH NONCE-KEY (2D Nonce) ==="
 cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK" --nonce 0 --tempo.nonce-key 100
 
-# TODO(upstream): re-enable after https://github.com/foundry-rs/foundry/pull/14259
-# echo -e "\n=== ANVIL LOCAL: CAST SEND WITH EXPIRING NONCE ==="
-# cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK" --tempo.expiring-nonce --tempo.valid-before "$(($(date +%s) + 25))"
+echo -e "\n=== ANVIL LOCAL: CAST SEND WITH EXPIRING NONCE ==="
+cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$ALICE_PK" --tempo.expiring-nonce --tempo.valid-before "$(($(date +%s) + 25))"
 
 echo -e "\n=== ANVIL LOCAL: BATCH SEND ==="
 cast batch-send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT \
@@ -841,7 +839,7 @@ echo -e "\n=== ANVIL FORK: CHECK BLOCK NUMBER ==="
 cast block-number --rpc-url http://127.0.0.1:$ANVIL_PORT
 
 echo -e "\n=== ANVIL FORK: FORGE TEST ==="
-TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --tempo --rpc-url http://127.0.0.1:$ANVIL_PORT
+TEMPO_FEE_TOKEN="$FEE_TOKEN" forge test --rpc-url http://127.0.0.1:$ANVIL_PORT
 
 echo -e "\n=== ANVIL FORK: FORGE SCRIPT SIMULATE ==="
 TEMPO_FEE_TOKEN="$FEE_TOKEN" forge script --tempo.fee-token "$FEE_TOKEN" script/Mail.s.sol --sig "run(string)" "$(date +%s%N)" --rpc-url http://127.0.0.1:$ANVIL_PORT --private-key "$FORK_PK"
@@ -858,9 +856,8 @@ cast erc20 transfer --tempo.fee-token "$FEE_TOKEN" 0x20c000000000000000000000000
 echo -e "\n=== ANVIL FORK: CAST SEND WITH NONCE-KEY (2D Nonce) ==="
 cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK" --nonce 0 --tempo.nonce-key 100
 
-# TODO(upstream): re-enable after https://github.com/foundry-rs/foundry/pull/14259
-# echo -e "\n=== ANVIL FORK: CAST SEND WITH EXPIRING NONCE ==="
-# cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK" --tempo.expiring-nonce --tempo.valid-before "$(($(date +%s) + 25))"
+echo -e "\n=== ANVIL FORK: CAST SEND WITH EXPIRING NONCE ==="
+cast send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT 0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D 'increment()' --private-key "$FORK_PK" --tempo.expiring-nonce --tempo.valid-before "$(($(date +%s) + 25))"
 
 echo -e "\n=== ANVIL FORK: BATCH SEND ==="
 cast batch-send --tempo.fee-token "$FEE_TOKEN" --rpc-url http://127.0.0.1:$ANVIL_PORT \
