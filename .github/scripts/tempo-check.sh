@@ -268,6 +268,9 @@ if cast keychain auth "$KC_LIMITED_ADDR" secp256k1 1893456000 \
 fi
 echo "OK: duplicate authorize correctly rejected"
 
+# --- T3-only scope / call-restriction tests ---
+if [[ "$HARDFORK" != "T2" ]]; then
+
 echo -e "\n=== CAST KEYCHAIN: AUTHORIZE WITH --scope (ADDRESS ONLY, UNRESTRICTED) ==="
 kc_scoped_json="$(cast wallet new --json)"
 KC_SCOPED_PK="$(jq -r '.[0].private_key' <<<"$kc_scoped_json")"
@@ -425,6 +428,10 @@ cast keychain auth "$KC_JSONR_ADDR" secp256k1 1893456000 \
   --scopes "[{\"target\":\"$FEE_TOKEN\",\"selectors\":[{\"selector\":\"transfer\",\"recipients\":[\"$ALLOWED_RECIPIENT\"]}]},{\"target\":\"0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D\"}]" \
   --rpc-url "$ETH_RPC_URL" --private-key "$PK" ${FEE_TOKEN_ARG[@]+"${FEE_TOKEN_ARG[@]}"}
 echo "OK: authorized key with --scopes JSON including recipients"
+
+else
+  echo -e "\n=== SKIPPING T3-only scope/call-restriction tests (HARDFORK=$HARDFORK) ==="
+fi # end T3-only scope tests
 
 echo -e "\n=== SETUP SPONSOR ==="
 # Create a sponsor wallet for testing sponsored (gasless) transactions
