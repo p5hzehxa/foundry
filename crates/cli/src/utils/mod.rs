@@ -4,6 +4,7 @@ use alloy_provider::{Network, Provider, RootProvider, network::AnyNetwork};
 use eyre::{ContextCompat, Result};
 use foundry_common::{provider::ProviderBuilder, shell};
 use foundry_config::{Chain, Config};
+use gix::bstr::BStr;
 use itertools::Itertools;
 use path_slash::PathExt;
 use regex::Regex;
@@ -315,12 +316,27 @@ impl<'a> Git<'a> {
         Self::new(config.root.as_path())
     }
 
+    /// Opens the git repository at or above `self.root`.
+    fn repo(&self) -> Result<gix::Repository> {
+        gix::discover(self.root)
+            .map_err(|e| eyre::eyre!("failed to open git repo: {e}"))
+            .map(|r| r.into_sync().into())
+    }
+
+    /// Opens the git repository at or above the given path.
+    fn repo_at(path: &Path) -> Result<gix::Repository> {
+        gix::discover(path)
+            .map_err(|e| eyre::eyre!("failed to open git repo: {e}"))
+            .map(|r| r.into_sync().into())
+    }
+
+    /// Discovers the git repository containing `path` and returns the worktree root.
     pub fn root_of(relative_to: &Path) -> Result<PathBuf> {
-        let output = Self::cmd_no_root()
-            .current_dir(relative_to)
-            .args(["rev-parse", "--show-toplevel"])
-            .get_stdout_lossy()?;
-        Ok(PathBuf::from(output))
+        let repo = gix::discover(relative_to)
+            .map_err(|e| eyre::eyre!("failed to discover git repo: {e}"))?;
+        repo.workdir()
+            .map(|p| p.to_owned())
+            .ok_or_else(|| eyre::eyre!("bare repository has no worktree"))
     }
 
     pub fn clone_with_branch(
@@ -329,7 +345,7 @@ impl<'a> Git<'a> {
         branch: impl AsRef<OsStr>,
         to: Option<impl AsRef<OsStr>>,
     ) -> Result<()> {
-        Self::cmd_no_root()
+        Self::git_cmd()
             .stderr(Stdio::inherit())
             .args(["clone", "--recurse-submodules"])
             .args(shallow.then_some("--depth=1"))
@@ -347,7 +363,7 @@ impl<'a> Git<'a> {
         from: impl AsRef<OsStr>,
         to: Option<impl AsRef<OsStr>>,
     ) -> Result<()> {
-        Self::cmd_no_root()
+        Self::git_cmd()
             .stderr(Stdio::inherit())
             .args(["clone", "--recurse-submodules"])
             .args(shallow.then_some("--depth=1"))
@@ -397,9 +413,11 @@ impl<'a> Git<'a> {
             .map(drop)
     }
 
-    /// Returns the current HEAD commit hash of the current branch.
+    /// Returns the current HEAD commit hash.
     pub fn head(self) -> Result<String> {
-        self.cmd().args(["rev-parse", "HEAD"]).get_stdout_lossy()
+        let repo = self.repo()?;
+        let id = repo.head_id().map_err(|e| eyre::eyre!("failed to resolve HEAD: {e}"))?;
+        Ok(id.to_string())
     }
 
     pub fn checkout_at(self, tag: impl AsRef<OsStr>, at: &Path) -> Result<()> {
@@ -407,13 +425,19 @@ impl<'a> Git<'a> {
     }
 
     pub fn init(self) -> Result<()> {
-        self.cmd().arg("init").exec().map(drop)
+        gix::init(self.root).map_err(|e| eyre::eyre!("failed to init git repo: {e}"))?;
+        Ok(())
     }
 
     pub fn current_rev_branch(self, at: &Path) -> Result<(String, String)> {
-        let rev = self.cmd_at(at).args(["rev-parse", "HEAD"]).get_stdout_lossy()?;
-        let branch =
-            self.cmd_at(at).args(["rev-parse", "--abbrev-ref", "HEAD"]).get_stdout_lossy()?;
+        let repo = Self::repo_at(at)?;
+        let id = repo.head_id().map_err(|e| eyre::eyre!("failed to resolve HEAD: {e}"))?;
+        let rev = id.to_string();
+        let branch = repo
+            .head_name()
+            .map_err(|e| eyre::eyre!("failed to resolve HEAD name: {e}"))?
+            .map(|name| name.shorten().to_string())
+            .unwrap_or_else(|| "HEAD".to_string());
         Ok((rev, branch))
     }
 
@@ -430,17 +454,17 @@ impl<'a> Git<'a> {
         self.cmd().arg("reset").args(hard.then_some("--hard")).arg(tree).exec().map(drop)
     }
 
-    pub fn commit_tree(
-        self,
-        tree: impl AsRef<OsStr>,
-        msg: Option<impl AsRef<OsStr>>,
-    ) -> Result<String> {
-        self.cmd()
-            .arg("commit-tree")
-            .arg(tree)
-            .args(msg.as_ref().is_some().then_some("-m"))
-            .args(msg)
-            .get_stdout_lossy()
+    pub fn commit_tree(self, tree: &str, msg: Option<impl AsRef<OsStr>>) -> Result<String> {
+        let repo = self.repo()?;
+        let tree_id = repo
+            .rev_parse_single(BStr::new(tree.as_bytes()))
+            .map_err(|e| eyre::eyre!("failed to parse tree '{tree}': {e}"))?;
+        let message =
+            msg.as_ref().map_or(String::new(), |m| m.as_ref().to_string_lossy().into_owned());
+        let commit = repo
+            .new_commit(&message, tree_id, std::iter::empty::<gix::ObjectId>())
+            .map_err(|e| eyre::eyre!("failed to create commit: {e}"))?;
+        Ok(commit.id.to_string())
     }
 
     pub fn rm<I, S>(self, force: bool, paths: I) -> Result<()>
@@ -474,44 +498,78 @@ impl<'a> Git<'a> {
         Ok(())
     }
 
+    /// Returns `true` if `self.root` is inside a git repository.
     pub fn is_in_repo(self) -> std::io::Result<bool> {
-        self.cmd().args(["rev-parse", "--is-inside-work-tree"]).status().map(|s| s.success())
+        Ok(gix::discover(self.root).is_ok())
     }
 
+    /// Returns `true` if `self.root` is the root of the git repository.
     pub fn is_repo_root(self) -> Result<bool> {
-        self.cmd().args(["rev-parse", "--show-cdup"]).get_stdout_lossy().map(|s| s.is_empty())
+        match gix::discover(self.root) {
+            Ok(repo) => match repo.workdir() {
+                Some(workdir) => {
+                    Ok(dunce::canonicalize(workdir)? == dunce::canonicalize(self.root)?)
+                }
+                None => Ok(false),
+            },
+            Err(_) => Ok(false),
+        }
     }
 
+    /// Returns `true` if the working tree is clean (no modified, staged, or untracked files).
     pub fn is_clean(self) -> Result<bool> {
-        self.cmd().args(["status", "--porcelain"]).exec().map(|out| out.stdout.is_empty())
+        let repo = self.repo()?;
+        let has_changes = repo
+            .status(gix::progress::Discard)
+            .map_err(|e| eyre::eyre!("failed to get status: {e}"))?
+            .untracked_files(gix::status::UntrackedFiles::Files)
+            .into_iter(None::<gix::bstr::BString>)
+            .map_err(|e| eyre::eyre!("failed to iterate status: {e}"))?
+            .next()
+            .is_some();
+        Ok(!has_changes)
     }
 
-    pub fn has_branch(self, branch: impl AsRef<OsStr>, at: &Path) -> Result<bool> {
-        self.cmd_at(at)
-            .args(["branch", "--list", "--no-color"])
-            .arg(branch)
-            .get_stdout_lossy()
-            .map(|stdout| !stdout.is_empty())
+    /// Returns `true` if a branch with the given name exists at the given path.
+    pub fn has_branch(self, branch: impl AsRef<str>, at: &Path) -> Result<bool> {
+        let repo = Self::repo_at(at)?;
+        let refname = format!("refs/heads/{}", branch.as_ref());
+        Ok(repo
+            .try_find_reference(&*refname)
+            .map_err(|e| eyre::eyre!("failed to find reference: {e}"))?
+            .is_some())
     }
 
-    pub fn has_tag(self, tag: impl AsRef<OsStr>, at: &Path) -> Result<bool> {
-        self.cmd_at(at)
-            .args(["tag", "--list"])
-            .arg(tag)
-            .get_stdout_lossy()
-            .map(|stdout| !stdout.is_empty())
+    /// Returns `true` if a tag with the given name exists at the given path.
+    pub fn has_tag(self, tag: impl AsRef<str>, at: &Path) -> Result<bool> {
+        let repo = Self::repo_at(at)?;
+        let refname = format!("refs/tags/{}", tag.as_ref());
+        Ok(repo
+            .try_find_reference(&*refname)
+            .map_err(|e| eyre::eyre!("failed to find reference: {e}"))?
+            .is_some())
     }
 
-    pub fn has_rev(self, rev: impl AsRef<OsStr>, at: &Path) -> Result<bool> {
-        self.cmd_at(at)
-            .args(["cat-file", "-t"])
-            .arg(rev)
-            .get_stdout_lossy()
-            .map(|stdout| &stdout == "commit")
+    /// Returns `true` if the given revision resolves to a commit.
+    pub fn has_rev(self, rev: impl AsRef<str>, at: &Path) -> Result<bool> {
+        let repo = Self::repo_at(at)?;
+        match repo.rev_parse_single(BStr::new(rev.as_ref().as_bytes())) {
+            Ok(id) => {
+                let object = id.object().map_err(|e| eyre::eyre!("failed to find object: {e}"))?;
+                Ok(object.kind == gix::object::Kind::Commit)
+            }
+            Err(_) => Ok(false),
+        }
     }
 
-    pub fn get_rev(self, tag_or_branch: impl AsRef<OsStr>, at: &Path) -> Result<String> {
-        self.cmd_at(at).args(["rev-list", "-n", "1"]).arg(tag_or_branch).get_stdout_lossy()
+    /// Resolves a tag or branch name to a commit hash.
+    pub fn get_rev(self, tag_or_branch: impl AsRef<str>, at: &Path) -> Result<String> {
+        let repo = Self::repo_at(at)?;
+        let id =
+            repo.rev_parse_single(BStr::new(tag_or_branch.as_ref().as_bytes())).map_err(|e| {
+                eyre::eyre!("failed to parse revision '{}': {e}", tag_or_branch.as_ref())
+            })?;
+        Ok(id.to_string())
     }
 
     pub fn ensure_clean(self) -> Result<()> {
@@ -530,31 +588,55 @@ ignore them in the `.gitignore` file."
         }
     }
 
+    /// Resolves a revision to its commit hash, optionally shortened.
     pub fn commit_hash(self, short: bool, revision: &str) -> Result<String> {
-        self.cmd()
-            .arg("rev-parse")
-            .args(short.then_some("--short"))
-            .arg(revision)
-            .get_stdout_lossy()
+        let repo = self.repo()?;
+        let id = repo
+            .rev_parse_single(BStr::new(revision.as_bytes()))
+            .map_err(|e| eyre::eyre!("failed to parse revision '{revision}': {e}"))?;
+        let hex = id.to_string();
+        if short { Ok(hex[..7.min(hex.len())].to_string()) } else { Ok(hex) }
     }
 
+    /// Returns all tags as a newline-separated string.
     pub fn tag(self) -> Result<String> {
-        self.cmd().arg("tag").get_stdout_lossy()
+        let repo = self.repo()?;
+        let binding =
+            repo.references().map_err(|e| eyre::eyre!("failed to list references: {e}"))?;
+        let refs =
+            binding.prefixed("refs/tags/").map_err(|e| eyre::eyre!("failed to list tags: {e}"))?;
+        let mut tags = Vec::new();
+        for r in refs {
+            let r = r.map_err(|e| eyre::eyre!("failed to read reference: {e}"))?;
+            let name = r.name().shorten().to_string();
+            tags.push(name);
+        }
+        Ok(tags.join("\n"))
     }
 
-    /// Returns the tag the commit first appeared in.
-    ///
-    /// E.g Take rev = `abc1234`. This commit can be found in multiple releases (tags).
-    /// Consider releases: `v0.1.0`, `v0.2.0`, `v0.3.0` in chronological order, `rev` first appeared
-    /// in `v0.2.0`.
-    ///
-    /// Hence, `tag_for_commit("abc1234")` will return `v0.2.0`.
+    /// Returns the first tag that contains the given commit.
     pub fn tag_for_commit(self, rev: &str, at: &Path) -> Result<Option<String>> {
-        self.cmd_at(at)
-            .args(["tag", "--contains"])
-            .arg(rev)
-            .get_stdout_lossy()
-            .map(|stdout| stdout.lines().next().map(str::to_string))
+        let repo = Self::repo_at(at)?;
+        let wanted = repo
+            .rev_parse_single(BStr::new(rev.as_bytes()))
+            .map_err(|e| eyre::eyre!("failed to parse revision '{rev}': {e}"))?;
+        let binding =
+            repo.references().map_err(|e| eyre::eyre!("failed to list references: {e}"))?;
+        let tags =
+            binding.prefixed("refs/tags/").map_err(|e| eyre::eyre!("failed to list tags: {e}"))?;
+        for r in tags {
+            let mut r = r.map_err(|e| eyre::eyre!("failed to read reference: {e}"))?;
+            let tag_tip = match r.peel_to_id() {
+                Ok(id) => id.detach(),
+                Err(_) => continue,
+            };
+            if let Ok(base) = repo.merge_base(wanted, tag_tip)
+                && base.detach() == wanted.detach()
+            {
+                return Ok(Some(r.name().shorten().to_string()));
+            }
+        }
+        Ok(None)
     }
 
     /// Returns a list of tuples of submodule paths and their respective branches.
@@ -698,28 +780,78 @@ ignore them in the `.gitignore` file."
         self.cmd().stderr(self.stderr()).args(["submodule", "sync"]).exec().map(drop)
     }
 
-    /// Get the URL of a submodule from git config
+    /// Get the URL of a submodule from git config.
     pub fn submodule_url(self, path: &Path) -> Result<Option<String>> {
-        self.cmd()
-            .args(["config", "--get", &format!("submodule.{}.url", path.to_slash_lossy())])
-            .get_stdout_lossy()
-            .map(|url| Some(url.trim().to_string()))
+        let repo = self.repo()?;
+        let key = format!("submodule.{}.url", path.to_slash_lossy());
+        match repo.config_snapshot().string(&key) {
+            Some(val) => Ok(Some(val.to_string())),
+            None => Ok(None),
+        }
     }
 
-    pub fn cmd(self) -> Command {
-        let mut cmd = Self::cmd_no_root();
+    /// Returns the fetch URL of the given remote, or `None` if it doesn't exist.
+    pub fn remote_url(self, name: &str) -> Option<String> {
+        let repo = self.repo().ok()?;
+        let remote = repo.find_remote(name).ok()?;
+        remote.url(gix::remote::Direction::Fetch).map(|url| url.to_bstring().to_string())
+    }
+
+    /// Sets the branch for a submodule.
+    pub fn set_submodule_branch(self, rel_path: &Path, branch: &str) -> Result<()> {
+        self.cmd().args(["submodule", "set-branch", "-b", branch]).arg(rel_path).exec().map(drop)
+    }
+
+    /// Returns remote branch names (stripped of the `origin/` prefix).
+    pub fn remote_branches(self) -> Result<String> {
+        let repo = self.repo()?;
+        let binding =
+            repo.references().map_err(|e| eyre::eyre!("failed to list references: {e}"))?;
+        let refs = binding
+            .remote_branches()
+            .map_err(|e| eyre::eyre!("failed to list remote branches: {e}"))?;
+        let mut names = Vec::new();
+        for r in refs {
+            let r = r.map_err(|e| eyre::eyre!("failed to read reference: {e}"))?;
+            names.push(r.name().shorten().to_string());
+        }
+        Ok(names.join("\n"))
+    }
+
+    /// Fetches a branch from origin and checks out a local tracking branch at the given path.
+    pub fn fetch_and_checkout_branch(self, at: &Path, branch: &str) -> Result<()> {
+        self.cmd_at(at).args(["fetch", "origin", branch]).exec().map_err(|e| {
+            eyre::eyre!(
+                "Could not fetch latest changes for branch {branch} in submodule at {}: {e}",
+                at.display()
+            )
+        })?;
+        self.cmd_at(at)
+            .args(["checkout", "-B", branch, &format!("origin/{branch}")])
+            .exec()
+            .map_err(|e| {
+                eyre::eyre!(
+                    "Could not checkout and track origin/{branch} for submodule at {}: {e}",
+                    at.display()
+                )
+            })?;
+        Ok(())
+    }
+
+    fn cmd(self) -> Command {
+        let mut cmd = Self::git_cmd();
         cmd.current_dir(self.root);
         cmd
     }
 
-    pub fn cmd_at(self, path: &Path) -> Command {
-        let mut cmd = Self::cmd_no_root();
+    fn cmd_at(self, path: &Path) -> Command {
+        let mut cmd = Self::git_cmd();
         cmd.current_dir(path);
         cmd
     }
 
-    pub fn cmd_no_root() -> Command {
-        let mut cmd = Command::new("git");
+    fn git_cmd() -> Command {
+        let mut cmd = Command::new(gix::path::env::exe_invocation());
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd
     }

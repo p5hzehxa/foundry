@@ -4,7 +4,7 @@ use clap::{Parser, ValueHint};
 use eyre::{Context, Result};
 use foundry_cli::{
     opts::Dependency,
-    utils::{CommandUtils, Git, LoadConfig},
+    utils::{Git, LoadConfig},
 };
 use foundry_config::{Config, impl_figment_convert_basic};
 use std::path::{Path, PathBuf};
@@ -198,25 +198,7 @@ impl UpdateArgs {
 
     /// Fetches and checks out the latest version of a branch from origin
     fn fetch_and_checkout_branch(git: &Git<'_>, path: &Path, branch: &str) -> Result<()> {
-        // Fetch the latest changes from origin for the branch
-        git.cmd_at(path).args(["fetch", "origin", branch]).exec().wrap_err(format!(
-            "Could not fetch latest changes for branch {} in submodule at {}",
-            branch,
-            path.display()
-        ))?;
-
-        // Checkout and track the remote branch to ensure we have the latest commit
-        // Using checkout -B ensures the local branch tracks origin/branch
-        git.cmd_at(path)
-            .args(["checkout", "-B", branch, &format!("origin/{branch}")])
-            .exec()
-            .wrap_err(format!(
-                "Could not checkout and track origin/{} for submodule at {}",
-                branch,
-                path.display()
-            ))?;
-
-        Ok(())
+        git.fetch_and_checkout_branch(path, branch)
     }
 }
 
