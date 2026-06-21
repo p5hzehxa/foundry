@@ -6,20 +6,16 @@ jobs:
       - image: cimg/rust:1.85.0
     steps:
       - checkout
-      
       - restore_cache:
           keys:
             - v1-cargo-cache-{{ checksum "Cargo.lock" }}
             - v1-cargo-cache-
-
       - run:
           name: Build Project
           command: cargo build --release
-
       - run:
           name: Run Tests
           command: cargo test
-
       - save_cache:
           key: v1-cargo-cache-{{ checksum "Cargo.lock" }}
           paths:
