@@ -1,0 +1,4 @@
+baseURL = "/"
+languageCode = "en-us"
+title = "Foundry — Ethereum Development Toolkit"
+disableKinds = ["taxonomy", "term"]
